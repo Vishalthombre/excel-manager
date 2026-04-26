@@ -2,29 +2,43 @@ import React, { useState, useEffect } from 'react';
 import { executeSmartSearch } from '../utils/searchLogic';
 import DataTable from './DataTable';
 
-const SearchPanel = ({ masterData, stagedDataCount, onProcessResults, onDone }) => {
-  const [selectedColumn, setSelectedColumn] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+const SearchPanel = ({ masterData, onProcessResults, onDone }) => {
+  const columns = masterData && masterData.length > 0 ? Object.keys(masterData[0]) : [];
+  const defaultCol = columns.length > 0 ? columns[0] : '';
+
+  // State to hold 4 distinct search conditions
+  const [conditions, setConditions] = useState([
+    { column: defaultCol, query: '' },
+    { column: defaultCol, query: '' },
+    { column: defaultCol, query: '' },
+    { column: defaultCol, query: '' }
+  ]);
+  
   const [pendingResults, setPendingResults] = useState(null);
 
-  const columns = masterData && masterData.length > 0 ? Object.keys(masterData[0]) : [];
+  const handleConditionChange = (index, field, value) => {
+    const newConditions = [...conditions];
+    newConditions[index][field] = value;
+    setConditions(newConditions);
+  };
 
-  if (columns.length > 0 && !selectedColumn) {
-    setSelectedColumn(columns[0]);
-  }
-
-  // Real-Time Search Trigger: Runs immediately when query or column changes
   useEffect(() => {
-    if (searchQuery.trim().length > 0 && selectedColumn) {
-      const results = executeSmartSearch(masterData, selectedColumn, searchQuery);
+    const hasActiveSearch = conditions.some(c => c.column && c.query.trim() !== '');
+    if (hasActiveSearch) {
+      const results = executeSmartSearch(masterData, conditions);
       setPendingResults(results);
     } else {
       setPendingResults(null);
     }
-  }, [searchQuery, selectedColumn, masterData]);
+  }, [conditions, masterData]);
 
   const handleReset = () => {
-    setSearchQuery('');
+    setConditions([
+      { column: defaultCol, query: '' },
+      { column: defaultCol, query: '' },
+      { column: defaultCol, query: '' },
+      { column: defaultCol, query: '' }
+    ]);
     setPendingResults(null);
   };
 
@@ -32,71 +46,42 @@ const SearchPanel = ({ masterData, stagedDataCount, onProcessResults, onDone }) 
     if (decision === 'YES') {
       onProcessResults(pendingResults);
     }
-    setPendingResults(null);
-    setSearchQuery(''); // Clears the input so user can search again immediately
-  };
-
-  const renderPrompt = () => {
-    if (!pendingResults) return null;
-
-    let promptMessage = "";
-    let alertClass = "alert-info"; 
-
-    if (stagedDataCount === 0) {
-      promptMessage = `${pendingResults.length} matching records found. Do you want to add these records to a new Excel file?`;
-      alertClass = "alert-info";
-    } else if (pendingResults.length > stagedDataCount) {
-      promptMessage = `Previous search had ${stagedDataCount} records. New search has more records (${pendingResults.length}). Do you want to add these to a new file?`;
-      alertClass = "alert-warning";
-    } else {
-      promptMessage = `Previous search had ${stagedDataCount} records. New search has fewer records (${pendingResults.length}). Do you want to replace previous records and update the new file?`;
-      alertClass = "alert-success";
-    }
-
-    return (
-      <div className={`prompt-box ${alertClass}`}>
-        <div style={{ flex: 1 }}>
-          <strong>{promptMessage}</strong>
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="btn btn-primary" onClick={() => handleDecision('YES')}>YES</button>
-          <button className="btn btn-outline" onClick={() => handleDecision('NO')}>NO</button>
-        </div>
-      </div>
-    );
+    handleReset(); // Clear inputs after adding to workspace
   };
 
   return (
     <div className="card">
-      <h2 className="card-title">🔍 DYNAMIC LIVE SEARCH</h2>
+      <h2 className="card-title">🔍 MULTI-COLUMN LIVE SEARCH</h2>
       <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '1.5rem' }}>
-        Select a column and start typing. Results will appear instantly using phonetic fuzzy matching.
+        Fill out up to 4 columns to refine your search (AND condition). Empty fields are ignored.
       </p>
       
-      <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
-        <div className="input-group">
-          <label className="input-label">Select Target Column</label>
-          <select 
-            className="form-control"
-            value={selectedColumn} 
-            onChange={(e) => setSelectedColumn(e.target.value)}
-          >
-            {columns.map((col, idx) => (
-              <option key={idx} value={col}>{col}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className="input-group">
-          <label className="input-label">Live Search Value</label>
-          <input 
-            type="text" 
-            className="form-control"
-            placeholder="Type 'tablipatra' to find 'तबदीलपत्र'..." 
-            value={searchQuery} 
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+        {conditions.map((cond, index) => (
+          <div key={index} style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            <span style={{ fontWeight: 'bold', color: 'var(--text-muted)', width: '20px' }}>{index + 1}.</span>
+            <div className="input-group" style={{ flex: 1 }}>
+              <select 
+                className="form-control"
+                value={cond.column} 
+                onChange={(e) => handleConditionChange(index, 'column', e.target.value)}
+              >
+                {columns.map((col, idx) => (
+                  <option key={idx} value={col}>{col}</option>
+                ))}
+              </select>
+            </div>
+            <div className="input-group" style={{ flex: 2 }}>
+              <input 
+                type="text" 
+                className="form-control"
+                placeholder="Search value..." 
+                value={cond.query} 
+                onChange={(e) => handleConditionChange(index, 'query', e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
       </div>
 
       <div className="action-bar" style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
@@ -104,9 +89,18 @@ const SearchPanel = ({ masterData, stagedDataCount, onProcessResults, onDone }) 
         <button className="btn" style={{backgroundColor: '#1e3a8a', color: 'white'}} onClick={onDone}>🏁 FINISH WORKFLOW</button>
       </div>
 
-      {renderPrompt()}
+      {pendingResults && pendingResults.length > 0 && (
+        <div className={`prompt-box alert-info`} style={{ marginTop: '1.5rem' }}>
+          <div style={{ flex: 1 }}>
+            <strong>Found {pendingResults.length} matching records. Add unique records to your workspace?</strong>
+          </div>
+          <div style={{ display: 'flex', gap: '10px' }}>
+            <button className="btn btn-primary" onClick={() => handleDecision('YES')}>YES</button>
+            <button className="btn btn-outline" onClick={() => handleDecision('NO')}>NO</button>
+          </div>
+        </div>
+      )}
 
-      {/* Real-Time Scrollable Preview Box */}
       {pendingResults && pendingResults.length > 0 && (
         <div style={{ marginTop: '2rem', borderTop: '1px dashed var(--border-color)', paddingTop: '1.5rem' }}>
           <h3 style={{ marginBottom: '1rem', fontSize: '1rem', color: 'var(--text-main)' }}>

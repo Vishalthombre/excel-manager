@@ -1,5 +1,3 @@
-// frontend/src/utils/searchLogic.js
-
 const devanagariMap = {
   'अ': 'a', 'आ': 'a', 'इ': 'i', 'ई': 'i', 'उ': 'u', 'ऊ': 'u', 'ए': 'e', 'ऐ': 'e', 'ओ': 'o', 'औ': 'o',
   'क': 'k', 'ख': 'k', 'ग': 'g', 'घ': 'g', 'ङ': 'n',
@@ -12,7 +10,6 @@ const devanagariMap = {
   'ा': 'a', 'ि': 'i', 'ी': 'i', 'ु': 'u', 'ू': 'u', 'ृ': 'r', 'े': 'e', 'ै': 'e', 'ो': 'o', 'ौ': 'o', 'ं': 'n', 'ः': 'h', '्': ''
 };
 
-// Converts Hindi/Marathi to Latin base
 const transliterate = (text) => {
   let result = "";
   for (let char of String(text).toLowerCase()) {
@@ -21,12 +18,10 @@ const transliterate = (text) => {
   return result;
 };
 
-// Strips vowels and special characters to create a Phonetic "Skeleton"
 const getSkeleton = (text) => {
   return text.replace(/[aeiouy\W0-9_]/g, '');
 };
 
-// Calculates how many "typos" exist between two strings
 const levenshtein = (a, b) => {
   if (a.length === 0) return b.length;
   if (b.length === 0) return a.length;
@@ -50,35 +45,40 @@ const levenshtein = (a, b) => {
   return matrix[b.length][a.length];
 };
 
-export const executeSmartSearch = (masterData, selectedColumn, searchQuery) => {
-  if (!searchQuery.trim() || !selectedColumn) return [];
-
-  const queryTrans = transliterate(searchQuery);
-  const querySkel = getSkeleton(queryTrans);
+// Now accepts an array of criteria: [{column: 'Name', query: 'tab'}, {column: 'City', query: 'pune'}]
+export const executeSmartSearch = (masterData, criteriaList) => {
+  // Filter out any empty rows in the search UI
+  const activeCriteria = criteriaList.filter(c => c.column && c.query.trim() !== "");
+  
+  if (activeCriteria.length === 0) return [];
 
   return masterData.filter(row => {
-    const cellValue = String(row[selectedColumn] || "");
-    const cellTrans = transliterate(cellValue);
-    const cellSkel = getSkeleton(cellTrans);
-    
-    // TIER 1: Exact Substring Match (e.g., "Ramesh" inside "Patil Ramesh")
-    if (cellTrans.includes(queryTrans)) return true;
+    // AND CONDITION: Every active search field must match its respective column
+    return activeCriteria.every(criteria => {
+      const cellValue = String(row[criteria.column] || "");
+      const queryTrans = transliterate(criteria.query);
+      const querySkel = getSkeleton(queryTrans);
+      const cellTrans = transliterate(cellValue);
+      const cellSkel = getSkeleton(cellTrans);
+      
+      // Tier 1: Exact Substring
+      if (cellTrans.includes(queryTrans)) return true;
 
-    // TIER 2: Phonetic Substring Match (Solves the "tabdil" half-word issue)
-    // If query is "tabdil" (tbdl) and cell is "तबदीलपत्र" (tbdlptr), this matches instantly.
-    if (querySkel.length > 0 && cellSkel.includes(querySkel)) return true;
+      // Tier 2: Phonetic Substring
+      if (querySkel.length > 0 && cellSkel.includes(querySkel)) return true;
 
-    // TIER 3: Fuzzy Typo Match (Solves misspelling like "tablipatra" instead of "tabdeelpatra")
-    const cellWords = cellTrans.split(/\s+/);
-    for (let word of cellWords) {
-        const wordSkel = getSkeleton(word);
-        if (wordSkel.length > 0 && querySkel.length > 0) {
-            const maxTypos = Math.max(1, Math.floor(querySkel.length / 4));
-            const dist = levenshtein(querySkel, wordSkel);
-            if (dist <= maxTypos) return true;
-        }
-    }
-    
-    return false;
+      // Tier 3: Fuzzy Typo Match
+      const cellWords = cellTrans.split(/\s+/);
+      for (let word of cellWords) {
+          const wordSkel = getSkeleton(word);
+          if (wordSkel.length > 0 && querySkel.length > 0) {
+              const maxTypos = Math.max(1, Math.floor(querySkel.length / 4));
+              const dist = levenshtein(querySkel, wordSkel);
+              if (dist <= maxTypos) return true;
+          }
+      }
+      
+      return false; // If none of the 3 tiers match for this specific column, fail the whole row
+    });
   });
 };

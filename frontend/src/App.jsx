@@ -9,8 +9,8 @@ import DataTable from './components/DataTable';
 function App() {
   const [masterData, setMasterData] = useState(null);
   const [stagedData, setStagedData] = useState([]);
-  const [isDone, setIsDone] = useState(false); // Tracks if the user clicked "Done"
-  const [theme, setTheme] = useState('light'); // Set to light by default to match document wireframes
+  const [isDone, setIsDone] = useState(false); 
+  const [theme, setTheme] = useState('light'); 
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -24,17 +24,18 @@ function App() {
     setIsDone(false);
   };
 
-  // Handles logic for Case A and Case B replacement from the Requirement Doc
+  // NEW LOGIC: Accumulate and Deduplicate
   const handleProcessResults = (newResults) => {
-    if (stagedData.length === 0) {
-      setStagedData(newResults); // Initial Search
-    } else if (newResults.length > stagedData.length) {
-      // Case A: Add to new file (we will replace for simplicity of keeping data clean, or append based on specific need. Document implies replacing the view with the new broader dataset)
-      setStagedData(newResults); 
-    } else {
-      // Case B: Replace previous records
-      setStagedData(newResults);
-    }
+    setStagedData(prevData => {
+      // 1. Combine old staged data with the new search results
+      const combined = [...prevData, ...newResults];
+      
+      // 2. Remove duplicates by converting rows to strings and using a Set
+      const uniqueSet = new Set(combined.map(row => JSON.stringify(row)));
+      
+      // 3. Convert back to objects
+      return Array.from(uniqueSet).map(str => JSON.parse(str));
+    });
   };
 
   const handleExportExcel = () => {
@@ -42,7 +43,7 @@ function App() {
     const worksheet = XLSX.utils.json_to_sheet(stagedData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Compiled Data");
-    XLSX.writeFile(workbook, "Filtered_Records.xlsx");
+    XLSX.writeFile(workbook, "Filtered_Records.xlsx"); // Automatically saves as .xlsx
   };
 
   return (
@@ -69,23 +70,21 @@ function App() {
               <>
                 <SearchPanel 
                   masterData={masterData} 
-                  stagedDataCount={stagedData.length} 
                   onProcessResults={handleProcessResults}
                   onDone={() => setIsDone(true)}
                 />
 
                 {stagedData.length > 0 && (
                   <div className="card">
-                    <h3 style={{marginBottom: '1rem'}}>Current Staged Records ({stagedData.length})</h3>
+                    <h3 style={{marginBottom: '1rem'}}>Current Staged Workspace ({stagedData.length} Unique Records)</h3>
                     <DataTable data={stagedData} />
                   </div>
                 )}
               </>
             ) : (
-              /* Final Result Screen */
               <div className="prompt-box alert-info" style={{ flexDirection: 'column', alignItems: 'flex-start', padding: '2rem' }}>
                 <h2>🏁 FINAL RESULT</h2>
-                <p>You have compiled <strong>{stagedData.length}</strong> refined records.</p>
+                <p>You have compiled <strong>{stagedData.length}</strong> unique records.</p>
                 <div style={{ marginTop: '1.5rem', display: 'flex', gap: '1rem' }}>
                   <button className="btn btn-primary" onClick={handleExportExcel} disabled={stagedData.length === 0}>
                     📥 DOWNLOAD EXCEL
