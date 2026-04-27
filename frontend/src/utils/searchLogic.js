@@ -18,8 +18,11 @@ const transliterate = (text) => {
   return result;
 };
 
+// UPDATED: Now compresses double letters (ss -> s) to handle English spelling vs Phonetic spelling
 const getSkeleton = (text) => {
-  return text.replace(/[aeiouy\W0-9_]/g, '');
+  let skel = text.replace(/[aeiouy\W0-9_]/g, '');
+  // This Regex replaces any consecutive duplicate characters with a single character
+  return skel.replace(/(.)\1+/g, '$1'); 
 };
 
 const levenshtein = (a, b) => {
@@ -45,15 +48,12 @@ const levenshtein = (a, b) => {
   return matrix[b.length][a.length];
 };
 
-// Now accepts an array of criteria: [{column: 'Name', query: 'tab'}, {column: 'City', query: 'pune'}]
 export const executeSmartSearch = (masterData, criteriaList) => {
-  // Filter out any empty rows in the search UI
   const activeCriteria = criteriaList.filter(c => c.column && c.query.trim() !== "");
   
   if (activeCriteria.length === 0) return [];
 
   return masterData.filter(row => {
-    // AND CONDITION: Every active search field must match its respective column
     return activeCriteria.every(criteria => {
       const cellValue = String(row[criteria.column] || "");
       const queryTrans = transliterate(criteria.query);
@@ -72,13 +72,16 @@ export const executeSmartSearch = (masterData, criteriaList) => {
       for (let word of cellWords) {
           const wordSkel = getSkeleton(word);
           if (wordSkel.length > 0 && querySkel.length > 0) {
-              const maxTypos = Math.max(1, Math.floor(querySkel.length / 4));
+              
+              // UPDATED: Divided by 3 instead of 4. This is slightly more forgiving for silent letters (like 'g' in assignment)
+              const maxTypos = Math.max(1, Math.floor(querySkel.length / 3));
               const dist = levenshtein(querySkel, wordSkel);
+              
               if (dist <= maxTypos) return true;
           }
       }
       
-      return false; // If none of the 3 tiers match for this specific column, fail the whole row
+      return false; 
     });
   });
 };
