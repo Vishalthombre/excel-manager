@@ -18,10 +18,8 @@ const transliterate = (text) => {
   return result;
 };
 
-// UPDATED: Now compresses double letters (ss -> s) to handle English spelling vs Phonetic spelling
 const getSkeleton = (text) => {
   let skel = text.replace(/[aeiouy\W0-9_]/g, '');
-  // This Regex replaces any consecutive duplicate characters with a single character
   return skel.replace(/(.)\1+/g, '$1'); 
 };
 
@@ -61,24 +59,55 @@ export const executeSmartSearch = (masterData, criteriaList) => {
       const cellTrans = transliterate(cellValue);
       const cellSkel = getSkeleton(cellTrans);
       
-      // Tier 1: Exact Substring
+      // Tier 1: Fast Exact Substring Match
       if (cellTrans.includes(queryTrans)) return true;
 
-      // Tier 2: Phonetic Substring
+      // Tier 2: Fast Phonetic Substring Match (Handles words without spaces)
       if (querySkel.length > 0 && cellSkel.includes(querySkel)) return true;
 
-      // Tier 3: Fuzzy Typo Match
-      const cellWords = cellTrans.split(/\s+/);
-      for (let word of cellWords) {
-          const wordSkel = getSkeleton(word);
-          if (wordSkel.length > 0 && querySkel.length > 0) {
-              
-              // UPDATED: Divided by 3 instead of 4. This is slightly more forgiving for silent letters (like 'g' in assignment)
-              const maxTypos = Math.max(1, Math.floor(querySkel.length / 3));
-              const dist = levenshtein(querySkel, wordSkel);
-              
-              if (dist <= maxTypos) return true;
+      // Tier 3: Smart Phrase Matcher (Fixes the "tripati" and "vardas" sentence issue)
+      // Breaks the search into individual words
+      const queryWords = queryTrans.split(/\s+/).filter(w => w.length > 0);
+      const cellWords = cellTrans.split(/\s+/).filter(w => w.length > 0);
+
+      if (queryWords.length > 0) {
+        let matchedWordsCount = 0;
+
+        for (let qWord of queryWords) {
+          const qWordSkel = getSkeleton(qWord);
+          let wordMatched = false;
+
+          for (let cWord of cellWords) {
+            // Direct word match
+            if (cWord.includes(qWord)) { 
+              wordMatched = true; 
+              break; 
+            }
+
+            const cWordSkel = getSkeleton(cWord);
+            
+            // Substring skeleton match
+            if (qWordSkel.length > 0 && cWordSkel.includes(qWordSkel)) { 
+              wordMatched = true; 
+              break; 
+            }
+
+            // Typo match (slightly more forgiving algorithm)
+            if (qWordSkel.length > 0 && cWordSkel.length > 0) {
+              const maxTypos = Math.max(1, Math.ceil(qWordSkel.length / 3));
+              if (levenshtein(qWordSkel, cWordSkel) <= maxTypos) {
+                wordMatched = true; 
+                break;
+              }
+            }
           }
+          if (wordMatched) matchedWordsCount++;
+        }
+
+        // If at least 75% of the typed words match, consider it a successful row match!
+        // E.g., If you type 6 words, and 5 match, it pulls the row.
+        const requiredMatches = Math.ceil(queryWords.length * 0.75);
+        if (matchedWordsCount >= requiredMatches) return true;
       }
       
       return false; 

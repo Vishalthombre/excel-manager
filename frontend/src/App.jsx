@@ -24,18 +24,30 @@ function App() {
     setIsDone(false);
   };
 
-  // NEW LOGIC: Accumulate and Deduplicate
-  const handleProcessResults = (newResults) => {
-    setStagedData(prevData => {
-      // 1. Combine old staged data with the new search results
-      const combined = [...prevData, ...newResults];
+  // NEW LOGIC: Handles the 3 different set operations
+  const handleProcessResults = (action, newResults) => {
+    if (action === 'INITIAL_ADD' || action === 'OVERWRITE') {
+      // Overwrite: Replaces everything with the new search
+      const uniqueSet = new Set(newResults.map(row => JSON.stringify(row)));
+      setStagedData(Array.from(uniqueSet).map(str => JSON.parse(str)));
       
-      // 2. Remove duplicates by converting rows to strings and using a Set
-      const uniqueSet = new Set(combined.map(row => JSON.stringify(row)));
+    } else if (action === 'APPEND') {
+      // Append: Adds new results to existing, filtering out duplicates
+      setStagedData(prevData => {
+        const combined = [...prevData, ...newResults];
+        const uniqueSet = new Set(combined.map(row => JSON.stringify(row)));
+        return Array.from(uniqueSet).map(str => JSON.parse(str));
+      });
       
-      // 3. Convert back to objects
-      return Array.from(uniqueSet).map(str => JSON.parse(str));
-    });
+    } else if (action === 'RETAIN') {
+      // Retain: Keeps ONLY the overlapping records (Intersection)
+      setStagedData(prevData => {
+        const prevSet = new Set(prevData.map(row => JSON.stringify(row)));
+        const common = newResults.filter(row => prevSet.has(JSON.stringify(row)));
+        const uniqueSet = new Set(common.map(row => JSON.stringify(row)));
+        return Array.from(uniqueSet).map(str => JSON.parse(str));
+      });
+    }
   };
 
   const handleExportExcel = () => {
@@ -43,7 +55,7 @@ function App() {
     const worksheet = XLSX.utils.json_to_sheet(stagedData);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Compiled Data");
-    XLSX.writeFile(workbook, "Filtered_Records.xlsx"); // Automatically saves as .xlsx
+    XLSX.writeFile(workbook, "Filtered_Records.xlsx");
   };
 
   return (
@@ -70,13 +82,14 @@ function App() {
               <>
                 <SearchPanel 
                   masterData={masterData} 
+                  stagedData={stagedData} // PASSING FULL STAGED DATA HERE
                   onProcessResults={handleProcessResults}
                   onDone={() => setIsDone(true)}
                 />
 
                 {stagedData.length > 0 && (
                   <div className="card">
-                    <h3 style={{marginBottom: '1rem'}}>Current Staged Workspace ({stagedData.length} Unique Records)</h3>
+                    <h3 style={{marginBottom: '1rem'}}>Current Temporary File ({stagedData.length} Unique Records)</h3>
                     <DataTable data={stagedData} />
                   </div>
                 )}
